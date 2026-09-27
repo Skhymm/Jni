@@ -1,0 +1,41 @@
+name: NDK Build
+on:
+  workflow_dispatch:
+    inputs:
+      ndk_version:
+        description: 'NDK version'
+        required: true
+        default: 'r25c'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download NDK
+        run: |
+          set -e
+          V="${{ github.event.inputs.ndk_version }}"
+          URL1="https://dl.google.com/android/repository/android-ndk-${V}-linux.zip"
+          URL2="https://dl.google.com/android/repository/android-ndk-${V}-linux-x86_64.zip"
+          curl -fL -o ndk.zip "$URL1" || curl -fL -o ndk.zip "$URL2"
+          unzip -q ndk.zip
+          NDK_DIR=$(find . -maxdepth 1 -type d -name "android-ndk-*" | head -n1)
+          echo "NDK_HOME=$(pwd)/$NDK_DIR" >> $GITHUB_ENV
+
+      - name: Build with ndk-build
+        run: "$NDK_HOME/ndk-build -j$(nproc) V=1"
+
+      - name: Collect .so files
+        run: |
+          mkdir -p _out
+          find . -name "*.so" -path "*/libs/*" -exec cp --parents {} _out/ \; || true
+          find . -name "*.so" -path "*/obj/local/*" -exec cp --parents {} _out/ \; || true
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: jni-libs
+          path: _out/**/*.so
+          if-no-files-found: warn
